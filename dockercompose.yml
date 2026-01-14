@@ -1,0 +1,83 @@
+version: "3.9"
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: bagisto_mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: suman_db
+      MYSQL_USER: suman_usr
+      MYSQL_PASSWORD: TTC@7890
+      MYSQL_ROOT_PASSWORD: root
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - bagisto_net
+
+  app:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+    image: bagisto:latest
+    container_name: bagisto_app
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      # 🔥 VERY IMPORTANT: same .env inside container
+      - ./.env:/var/www/.env
+
+      # Laravel storage
+      - bagisto_storage:/var/www/storage
+    depends_on:
+      - mysql
+    networks:
+      - bagisto_net
+
+  web:
+    image: nginx:1.25-alpine
+    container_name: bagisto_nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      # Laravel code
+      - ./:/var/www
+
+      # 🔥 SAME .env for nginx + php-fpm
+      - ./.env:/var/www/.env
+
+      # Shared storage
+      - bagisto_storage:/var/www/storage
+
+      # Nginx vhost
+      - ./docker/nginx:/etc/nginx/conf.d
+
+      # Certbot webroot
+      - ./docker/certbot/www:/var/www/certbot
+
+      # SSL certificates
+      - ./docker/certbot/conf:/etc/letsencrypt
+    depends_on:
+      - app
+    networks:
+      - bagisto_net
+
+  certbot:
+    image: certbot/certbot
+    container_name: bagisto_certbot
+    volumes:
+      - ./docker/certbot/www:/var/www/certbot
+      - ./docker/certbot/conf:/etc/letsencrypt
+    networks:
+      - bagisto_net
+
+volumes:
+  mysql_data:
+  bagisto_storage:
+
+networks:
+  bagisto_net:
+    driver: bridge
